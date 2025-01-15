@@ -130,17 +130,17 @@ namespace util {
         bool wait_for_all_done(int milliseconds = -1) noexcept {
             bool result = false;
             log_info << "wait_for_all_done thread-pool  wait_for_all_done start\n";
-            if (std::unique_lock<std::mutex> lock{mutex_}; tasks_.empty()) {
+            if (std::unique_lock<std::mutex> lock{mutex_}; tasks_.empty() && running_count_ == 0) {
                 log_info << "thread-pool empty for return\n";
                 result = true;
             }
             if (std::unique_lock<std::mutex> lock{mutex_}; milliseconds < 0) {
                 log_info << "wait forever condition return\n";
-                wait_condition_.wait(lock, [this] { return is_terminate_ || tasks_.empty(); });
+                wait_condition_.wait(lock, [this] { return is_terminate_ || tasks_.empty() && running_count_ == 0; });
                 result = true;
             } else {
                 log_info << "wait " << milliseconds << " condition return\n";
-                result = wait_condition_.wait_for(lock, std::chrono::milliseconds(milliseconds), [this] { return is_terminate_ || tasks_.empty(); });
+                result = wait_condition_.wait_for(lock, std::chrono::milliseconds(milliseconds), [this] { return is_terminate_ || tasks_.empty() && running_count_ == 0; });
             }
 
             log_info << "wait_for_all_done finish ";
