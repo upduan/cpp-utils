@@ -4,7 +4,7 @@
 // #include <atlstr.h>
 
 namespace utils::base64 {
-    std::string const encode(std::string const &data) {
+    std::string const encode(std::string_view data) {
         int base64Length = Base64EncodeGetRequiredLength(static_cast<int>(data.length()));
         LPSTR bytes = (LPSTR) malloc(base64Length);
         Base64Encode(reinterpret_cast<const BYTE *>(data.data()), static_cast<int>(data.length()), bytes,
@@ -14,7 +14,7 @@ namespace utils::base64 {
         return r;
     }
 
-    std::string const decode(std::string const &data) {
+    std::string const decode(std::string_view data) {
         int originLength = Base64DecodeGetRequiredLength(static_cast<int>(data.length()));
         BYTE *bytes = (BYTE *) malloc(originLength);
         Base64Decode(reinterpret_cast<LPCSTR>(data.data()), static_cast<int>(data.length()), bytes, &originLength);

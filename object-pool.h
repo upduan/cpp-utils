@@ -5,52 +5,16 @@
 #include "Log.h"
 
 namespace util {
-    // template <typename T, typename = void> struct has_cleanup : std::false_type {};
-
-    // template <typename T> struct has_cleanup<T, std::void_t<decltype(std::declval<T>().cleanup())>> : std::true_type {};
-
-    // 对象池
-    // 可以结合单例模式使用
     template <typename T> class ObjectPool {
-    private:
-        template <typename U> struct ObjectWrapper {
-            ObjectWrapper(const U& obj, bool abusy = false) : object{obj}, busy{abusy} {}
-            ObjectWrapper(U&& obj, bool abusy = false) : object{std::move(obj)}, busy{abusy} {}
-            U object;
-            mutable bool busy;
-        };
-        int max_size_;
-        int min_size_;
-        int count_;
-        std::mutex mutex_;
-        // std::vector<std::shared_ptr<T>> obj_list_;
-        std::vector<ObjectWrapper<T>> obj_list_;
-        std::function<std::pair<bool, T>()> creator_;
-        std::function<void(T const& obj)> destroy_;
-        // std::function<void(T* obj_ptr)> obj_destroy_func_;
-        // std::atomic_bool is_destructed_;
-
     public:
         ObjectPool(int min_size, int max_size, std::function<std::pair<bool, T>()>&& creator, std::function<void(T const& obj)>&& destroy)
             : max_size_{max_size}, min_size_{min_size}, creator_{std::move(creator)}, destroy_{std::move(destroy)} {
-            // static_assert(has_cleanup<T>::value, "T must have a cleanup() function");
             obj_list_.reserve(max_size);
-            // obj_destroy_func_ = [&](T* obj_ptr) {
-            //     obj_ptr->cleanup();
-            //     if (is_destructed_) {
-            //         delete obj_ptr;
-            //     } else {
-            //         // 加入回收池
-            //         std::lock_guard<std::mutex> lock(mutex_);
-            //         obj_list_.push_back(std::shared_ptr<T>(obj_ptr, obj_destroy_func_));
-            //     }
-            // };
             initialize_create_object();
         }
 
         virtual ~ObjectPool() {
             std::lock_guard<std::mutex> lock(mutex_);
-            // is_destructed_ = true;
             for (auto& obj : obj_list_) {
                 destroy_(obj.object);
             }
@@ -62,7 +26,6 @@ namespace util {
             initialize_create_object();
         }
 
-        // std::shared_ptr<T> GetObject() {
         std::optional<T> GetObject() noexcept {
             // std::shared_ptr<T> result;
             std::optional<T> result;
@@ -123,7 +86,6 @@ namespace util {
     private:
         void initialize_create_object() noexcept {
             for (int i = 0; i < min_size_; ++i) {
-                // obj_list_.emplace_back(new T(), obj_destroy_func_);
                 auto const& [success, obj] = creator_();
                 if (success) {
                     obj_list_.emplace_back(ObjectWrapper<T>(obj));
@@ -131,5 +93,20 @@ namespace util {
             }
             count_ = min_size_;
         }
+
+    private:
+        struct ObjectWrapper {
+            ObjectWrapper(const T& obj, bool abusy = false) : object{obj}, busy{abusy} {}
+            ObjectWrapper(T&& obj, bool abusy = false) : object{std::move(obj)}, busy{abusy} {}
+            T object;
+            mutable bool busy;
+        };
+        int max_size_;
+        int min_size_;
+        int count_;
+        std::mutex mutex_;
+        std::vector<ObjectWrapper<T>> obj_list_;
+        std::function<std::pair<bool, T>()> creator_;
+        std::function<void(T const& obj)> destroy_;
     };
 } // namespace util
