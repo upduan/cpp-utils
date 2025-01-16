@@ -45,7 +45,7 @@ namespace util {
                     auto const& [success, obj] = creator_();
                     if (success) {
                         result = obj;
-                        obj_list_.emplace_back(ObjectWrapper<T>(obj, true));
+                        obj_list_.emplace_back(ObjectWrapper(obj, true));
                         log_info << "create and pool new object";
                         count_++;
                     } else {
@@ -88,7 +88,7 @@ namespace util {
             for (int i = 0; i < min_size_; ++i) {
                 auto const& [success, obj] = creator_();
                 if (success) {
-                    obj_list_.emplace_back(ObjectWrapper<T>(obj));
+                    obj_list_.emplace_back(ObjectWrapper(obj));
                 }
             }
             count_ = min_size_;
@@ -105,7 +105,7 @@ namespace util {
         int min_size_;
         int count_;
         std::mutex mutex_;
-        std::vector<ObjectWrapper<T>> obj_list_;
+        std::vector<ObjectWrapper> obj_list_;
         std::function<std::pair<bool, T>()> creator_;
         std::function<void(T const& obj)> destroy_;
     };

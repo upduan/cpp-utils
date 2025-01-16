@@ -4,36 +4,92 @@
 #include <cstdint>
 #include <iterator>
 #include <limits>
+#include <string>
 
 namespace util {
     class md5 {
+    public:
+        md5() {}
+
+        md5(std::uint8_t* first, std::uint8_t* last) {
+            update(first, last);
+        }
+
+        void update(std::uint8_t* first, std::uint8_t* last) {
+            std::uint64_t original_length_bits = std::distance(first, last) * 8;
+
+            std::ptrdiff_t chunk_length;
+            for (chunk_length = std::distance(first, last); chunk_length >= 64; chunk_length = std::distance(first, last)) {
+                reset_m_array();
+                bytes_to_m_array(first, m_array_.end());
+                hash_chunk();
+            }
+
+            reset_m_array();
+            bytes_to_m_array(first, m_array_.begin() + chunk_length / 4);
+            true_bit_to_m_array(first, chunk_length);
+
+            if (chunk_length >= 56) {
+                zeros_to_m_array(m_array_.end());
+                hash_chunk();
+
+                reset_m_array();
+                zeros_to_m_array(m_array_.end() - 2);
+                original_length_bits_to_m_array(original_length_bits);
+                hash_chunk();
+            } else {
+                zeros_to_m_array(m_array_.end() - 2);
+                original_length_bits_to_m_array(original_length_bits);
+                hash_chunk();
+            }
+        }
+
+        std::string digest() const {
+            std::uint8_t c[16];
+            digest(c);
+            return std::string((char*)c, 16);
+        }
+
+        std::string hex_digest() const {
+            std::uint8_t c[32];
+            hex_digest(c);
+            return std::string((char*)c, 32);
+        }
+
+        void digest(std::uint8_t container[16]) const {
+            auto it = container;
+            uint32_to_byte(a0_, it);
+            uint32_to_byte(b0_, it);
+            uint32_to_byte(c0_, it);
+            uint32_to_byte(d0_, it);
+        }
+
+        void hex_digest(std::uint8_t container[32]) const {
+            auto it = container;
+            uint32_to_hex(a0_, it);
+            uint32_to_hex(b0_, it);
+            uint32_to_hex(c0_, it);
+            uint32_to_hex(d0_, it);
+        }
+
     private:
-        std::uint32_t a0_ = 0x67452301;
-        std::uint32_t b0_ = 0xefcdab89;
-        std::uint32_t c0_ = 0x98badcfe;
-        std::uint32_t d0_ = 0x10325476;
+        static std::uint8_t input_u8(const std::uint8_t* it) {
+            return *it;
+        }
 
-        std::array<std::uint32_t, 16> m_array_;
-        std::array<std::uint32_t, 16>::iterator m_array_first_;
-
-        static const std::array<std::uint32_t, 64> k_array_;
-        static const std::array<std::uint32_t, 64> s_array_;
-
-    private:
         static constexpr std::uint32_t left_rotate(std::uint32_t x, std::uint32_t c) {
             return (x << c) | (x >> (32 - c));
         }
 
-        template <class OutputIterator> static void uint32_to_byte(std::uint32_t n, OutputIterator& out) {
+        static void uint32_to_byte(std::uint32_t n, std::uint8_t*& out) {
             *out++ = n & 0xff;
             *out++ = (n >> 8) & 0xff;
             *out++ = (n >> 16) & 0xff;
             *out++ = (n >> 24) & 0xff;
         }
 
-        template <class OutputIterator> static void uint32_to_hex(std::uint32_t n, OutputIterator& out) {
+        static void uint32_to_hex(std::uint32_t n, std::uint8_t*& out) {
             static auto const hex_chars = "0123456789abcdef";
-
             // print nibbles, low byte first (but high nibble before low nibble)
             // so shift is 4, 0, 12, 8, 20, 16, ...
             for (auto i = 0u; i < 32; i += 4) {
@@ -42,20 +98,16 @@ namespace util {
         }
 
     private:
-        template <class InputIterator> static std::uint8_t input_u8(const InputIterator& it) {
-            return *it;
-        }
+        static const std::array<std::uint32_t, 64> k_array_;
+        static const std::array<std::uint32_t, 64> s_array_;
 
+    private:
         void reset_m_array() {
             m_array_first_ = m_array_.begin();
         }
 
-        template <class InputIterator> void bytes_to_m_array(InputIterator& first, std::array<std::uint32_t, 16>::iterator m_array_last) {
+        void bytes_to_m_array(std::uint8_t*& first, std::array<std::uint32_t, 16>::iterator m_array_last) {
             for (; m_array_first_ != m_array_last; ++m_array_first_) {
-                // *m_array_first_ = std::uint8_t(*first++);
-                // *m_array_first_ |= std::uint8_t(*first++) << 8;
-                // *m_array_first_ |= std::uint8_t(*first++) << 16;
-                // *m_array_first_ |= std::uint8_t(*first++) << 24;
                 *m_array_first_ = input_u8(first++);
                 *m_array_first_ |= input_u8(first++) << 8;
                 *m_array_first_ |= input_u8(first++) << 16;
@@ -63,7 +115,7 @@ namespace util {
             }
         }
 
-        template <class InputIterator> void true_bit_to_m_array(InputIterator& first, std::ptrdiff_t chunk_length) {
+        void true_bit_to_m_array(std::uint8_t*& first, std::ptrdiff_t chunk_length) {
             switch (chunk_length % 4) {
             case 0:
                 *m_array_first_ = 0x00000080;
@@ -135,75 +187,14 @@ namespace util {
             d0_ += D;
         }
 
-    public:
-        template <class InputIterator>
-        typename std::enable_if<std::numeric_limits<typename InputIterator::value_type>::digits <= 8>::type update(InputIterator first, InputIterator last) {
-            std::uint64_t original_length_bits = std::distance(first, last) * 8;
+    private:
+        std::uint32_t a0_ = 0x67452301;
+        std::uint32_t b0_ = 0xefcdab89;
+        std::uint32_t c0_ = 0x98badcfe;
+        std::uint32_t d0_ = 0x10325476;
 
-            std::ptrdiff_t chunk_length;
-            for (chunk_length = std::distance(first, last); chunk_length >= 64; chunk_length = std::distance(first, last)) {
-                reset_m_array();
-                bytes_to_m_array(first, m_array_.end());
-                hash_chunk();
-            }
-
-            reset_m_array();
-            bytes_to_m_array(first, m_array_.begin() + chunk_length / 4);
-            true_bit_to_m_array(first, chunk_length);
-
-            if (chunk_length >= 56) {
-                zeros_to_m_array(m_array_.end());
-                hash_chunk();
-
-                reset_m_array();
-                zeros_to_m_array(m_array_.end() - 2);
-                original_length_bits_to_m_array(original_length_bits);
-                hash_chunk();
-            } else {
-                zeros_to_m_array(m_array_.end() - 2);
-                original_length_bits_to_m_array(original_length_bits);
-                hash_chunk();
-            }
-        }
-
-    public:
-        md5() {}
-
-        template <class InputIterator> md5(InputIterator first, InputIterator last) {
-            update(first, last);
-        }
-
-        template <class Container> Container digest() const {
-            Container c;
-            digest(c);
-            return c;
-        }
-
-        template <class Container> Container hex_digest() const {
-            Container c;
-            hex_digest(c);
-            return c;
-        }
-
-        template <class Container> void digest(Container& container) const {
-            container.resize(16);
-            auto it = container.begin();
-
-            uint32_to_byte(a0_, it);
-            uint32_to_byte(b0_, it);
-            uint32_to_byte(c0_, it);
-            uint32_to_byte(d0_, it);
-        }
-
-        template <class Container> void hex_digest(Container& container) const {
-            container.resize(32);
-            auto it = container.begin();
-
-            uint32_to_hex(a0_, it);
-            uint32_to_hex(b0_, it);
-            uint32_to_hex(c0_, it);
-            uint32_to_hex(d0_, it);
-        }
+        std::array<std::uint32_t, 16> m_array_;
+        std::array<std::uint32_t, 16>::iterator m_array_first_;
     };
 } // namespace util
 

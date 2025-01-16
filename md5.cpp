@@ -1,6 +1,6 @@
 #include "md5.h"
 
-namespace utils {
+namespace util {
     const std::array<std::uint32_t, 64> md5::k_array_ = {
         0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
         0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
