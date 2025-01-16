@@ -33,6 +33,7 @@ link_directories (${Boost_LIB_DIR} ${OPENSSL_LIB_DIR})
 add_library (cpputils SHARED
         thread-pool.cpp
         md5.cpp
+        base64.cpp
 )
 
 # vs MT/MTd

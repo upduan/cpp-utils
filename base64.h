@@ -1,10 +1,11 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
-namespace utils::base64 {
-    std::string const encode(std::string_view data);
+namespace util::base64 {
+    std::string encode(std::string_view data) noexcept;
 
-    std::string const decode(std::string_view data);
+    std::vector<std::uint8_t> decode(std::string_view data) noexcept;
 }
 
