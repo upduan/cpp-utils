@@ -17,6 +17,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "Log.h"
+
 namespace util {
     class ThreadPool {
     public:
