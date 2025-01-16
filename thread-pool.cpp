@@ -71,5 +71,6 @@ void thread_pool_test() {
                 // task process
             });
     }
+    util::pool->wait_for_all_done(); // wait for all tasks to finish
     util::ThreadPool::finalize(); // call only once
 }
