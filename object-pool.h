@@ -10,37 +10,27 @@ namespace util {
         ObjectPool(int min_size, int max_size, std::function<std::pair<bool, T>()>&& creator, std::function<void(T const& obj)>&& destroy)
             : max_size_{max_size}, min_size_{min_size}, creator_{std::move(creator)}, destroy_{std::move(destroy)} {
             obj_list_.reserve(max_size);
-            initialize_create_object();
+            initialize_objects_();
         }
 
         virtual ~ObjectPool() {
-            std::lock_guard<std::mutex> lock(mutex_);
-            for (auto& obj : obj_list_) {
-                destroy_(obj.object);
-            }
+            destroy_objects_();
         }
 
         void ForceReset() noexcept {
-            std::lock_guard<std::mutex> lock(mutex_);
-            obj_list_.clear();
-            initialize_create_object();
+            destroy_objects_();
+            initialize_objects_();
         }
 
         std::optional<T> GetObject() noexcept {
-            // std::shared_ptr<T> result;
             std::optional<T> result;
             std::lock_guard<std::mutex> lock(mutex_);
-            bool is_find = false;
-            for (auto const& obj_wrapper : obj_list_) {
-                if (!obj_wrapper.busy) {
-                    result = obj_wrapper.object;
-                    obj_wrapper.busy = true;
-                    log_debug << "find object";
-                    is_find = true;
-                    break;
-                }
-            }
-            if (!is_find) { // not found
+            auto r = find_object_([](auto it) { return !it->busy; });
+            if (r.first) {
+                it->busy = true;
+                result = it->object;
+                log_trace << "find object";
+            } else {
                 if (count_ < max_size_) {
                     auto const& [success, obj] = creator_();
                     if (success) {
@@ -60,31 +50,30 @@ namespace util {
 
         void RecycleObject(T const& obj) noexcept {
             std::lock_guard<std::mutex> lock(mutex_);
-            for (auto it = obj_list_.begin(); it != obj_list_.end(); ++it) {
-                if (it->object == obj) {
-                    it->busy = false;
-                    log_trace << "RecycleObject";
-                    return;
-                }
+            auto r = find_object_([&obj](auto it) { return it->object == obj; });
+            if (r.first) {
+                it->busy = false;
+                log_trace << "RecycleObject";
+            } else {
+                log_info << "RecycleObject not found";
             }
-            log_info << "RecycleObject not found";
         }
 
         void RemoveObject(T const& obj) noexcept {
             std::lock_guard<std::mutex> lock(mutex_);
-            for (auto it = obj_list_.begin(); it != obj_list_.end(); ++it) {
-                if (it->object == obj) {
-                    obj_list_.erase(it);
-                    count_--;
-                    log_trace << "RemoveObject";
-                    return;
-                }
+            auto r = find_object_([&obj](auto it) { return it->object == obj; });
+            if (r.first) {
+                destroy_(obj);
+                obj_list_.erase(r.second);
+                count_--;
+                log_trace << "RemoveObject";
+            } else {
+                log_info << "RemoveObject not found";
             }
-            log_info << "RemoveObject not found";
         }
 
-    private:
-        void initialize_create_object() noexcept {
+    protected:
+        void initialize_object_() noexcept {
             for (int i = 0; i < min_size_; ++i) {
                 auto const& [success, obj] = creator_();
                 if (success) {
@@ -92,6 +81,25 @@ namespace util {
                 }
             }
             count_ = min_size_;
+        }
+
+        void destroy_objects_() noexcept {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto it = obj_list_.begin(); it != obj_list_.end(); ++it) {
+                destroy_(obj);
+            }
+            obj_list_.clear();
+            count_ = 0;
+        }
+
+        std::pair<bool, std::vector<ObjectWrapper>::iterator> find_object_(std::function<bool(std::vector<ObjectWrapper>::iterator item)>&& predicate) noexcept {
+            auto end = obj_list_.end();
+            for (auto it = obj_list_.begin(); it != end; ++it) {
+                if (predicate(it)) {
+                    return {true, it};
+                }
+            }
+            return {false, end};
         }
 
     private:

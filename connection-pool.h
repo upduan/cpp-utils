@@ -54,5 +54,9 @@ namespace util {
             RemoveObject(connection);
             return GetObject();
         }
+
+        void CloseAll() noexcept {
+            destroy_objects_();
+        }
     };
 } // namespace util
