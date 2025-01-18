@@ -1,16 +1,6 @@
 ﻿#include "thread-pool.h"
 
 namespace util {
-    std::shared_ptr<ThreadPool> pool = nullptr;
-
-    void ThreadPool::initialize(int count) noexcept {
-        pool = std::make_shared<ThreadPool>(count);
-    }
-
-    void ThreadPool::finalize() noexcept {
-        pool = nullptr;
-    }
-
     bool ThreadPool::wait_for_all_done(int milliseconds) noexcept {
         std::unique_lock<std::mutex> lock{tasks_mutex_};
         auto wait_predicate = [this] { return is_terminate_ || tasks_.empty() && running_count_ == 0; };
@@ -57,20 +47,3 @@ namespace util {
         }
     }
 } // namespace util
-
-void thread_pool_test() {
-    util::ThreadPool::initialize(10); // call only once
-    for (int i = 0; i < 100; ++i) {
-        // call on need
-        util::pool->submit_task(
-            0 /*timeout*/,
-            [] {
-                // timeout process
-            },
-            [] {
-                // task process
-            });
-    }
-    util::pool->wait_for_all_done(); // wait for all tasks to finish
-    util::ThreadPool::finalize(); // call only once
-}

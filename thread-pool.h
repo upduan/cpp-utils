@@ -25,8 +25,6 @@ namespace util {
         static inline std::uint64_t now() noexcept {
             return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         }
-        static void initialize(int count) noexcept;
-        static void finalize() noexcept;
 
     public:
         ThreadPool(int count) noexcept {
@@ -85,6 +83,4 @@ namespace util {
         std::condition_variable wait_condition_;
         std::atomic<int> running_count_ = 0;
     };
-
-    extern std::shared_ptr<ThreadPool> pool;
 } // namespace util

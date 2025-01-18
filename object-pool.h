@@ -27,8 +27,8 @@ namespace util {
             std::lock_guard<std::mutex> lock(mutex_);
             auto r = find_object_([](auto it) { return !it->busy; });
             if (r.first) {
-                it->busy = true;
-                result = it->object;
+                r.second->busy = true;
+                result = r.second->object;
                 log_trace << "find object";
             } else {
                 if (count_ < max_size_) {
@@ -52,7 +52,7 @@ namespace util {
             std::lock_guard<std::mutex> lock(mutex_);
             auto r = find_object_([&obj](auto it) { return it->object == obj; });
             if (r.first) {
-                it->busy = false;
+                r.second->busy = false;
                 log_trace << "RecycleObject";
             } else {
                 log_info << "RecycleObject not found";
@@ -73,7 +73,14 @@ namespace util {
         }
 
     protected:
-        void initialize_object_() noexcept {
+        struct ObjectWrapper {
+            ObjectWrapper(const T& obj, bool abusy = false) : object{obj}, busy{abusy} {}
+            ObjectWrapper(T&& obj, bool abusy = false) : object{std::move(obj)}, busy{abusy} {}
+            T object;
+            mutable bool busy;
+        };
+
+        void initialize_objects_() noexcept {
             for (int i = 0; i < min_size_; ++i) {
                 auto const& [success, obj] = creator_();
                 if (success) {
@@ -86,13 +93,13 @@ namespace util {
         void destroy_objects_() noexcept {
             std::lock_guard<std::mutex> lock(mutex_);
             for (auto it = obj_list_.begin(); it != obj_list_.end(); ++it) {
-                destroy_(obj);
+                destroy_(it->object);
             }
             obj_list_.clear();
             count_ = 0;
         }
 
-        std::pair<bool, std::vector<ObjectWrapper>::iterator> find_object_(std::function<bool(std::vector<ObjectWrapper>::iterator item)>&& predicate) noexcept {
+        std::pair<bool, typename std::vector<ObjectWrapper>::iterator> find_object_(std::function<bool(typename std::vector<ObjectWrapper>::iterator item)>&& predicate) noexcept {
             auto end = obj_list_.end();
             for (auto it = obj_list_.begin(); it != end; ++it) {
                 if (predicate(it)) {
@@ -103,12 +110,6 @@ namespace util {
         }
 
     private:
-        struct ObjectWrapper {
-            ObjectWrapper(const T& obj, bool abusy = false) : object{obj}, busy{abusy} {}
-            ObjectWrapper(T&& obj, bool abusy = false) : object{std::move(obj)}, busy{abusy} {}
-            T object;
-            mutable bool busy;
-        };
         int max_size_;
         int min_size_;
         int count_;

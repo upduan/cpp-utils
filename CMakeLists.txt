@@ -34,6 +34,8 @@ add_library (cpputils SHARED
         thread-pool.cpp
         md5.cpp
         base64.cpp
+        file-transfer.cpp
+        socket-client.cpp
 )
 
 # vs MT/MTd
