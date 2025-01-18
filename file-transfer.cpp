@@ -8,6 +8,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -40,6 +41,7 @@ namespace util::FileTransfer {
 
         enum class FileType : std::uint32_t { TotalJson = 6, TaskJson, Video, Jpeg, Timestamp = 10, Pose };
 
+        // FIXME move to file transfer client
         struct Context {
             std::string big_task_id;
             std::string task_id;
@@ -145,23 +147,21 @@ namespace util::FileTransfer {
         constexpr std::size_t BUFFER_SIZE = 1024 * 100;
 
         bool string_view_to_uint64(std::string_view data, std::uint64_t& result) {
+            bool result = false; // 转换失败
             if (data.empty()) {
                 log_error << "Error: string_view is empty." << std::endl;
-                return false;
+            } else {
+                // 使用 std::from_chars 转换为 uint64_t
+                auto [ptr, ec] = std::from_chars(data.data(), data.data() + data.size(), result);
+                if (ec == std::errc()) {
+                    result = true; // 转换成功
+                } else if (ec == std::errc::invalid_argument) {
+                    log_error << "Error: Invalid argument, not a valid integer." << std::endl;
+                } else if (ec == std::errc::result_out_of_range) {
+                    log_error << "Error: Integer out of range for uint64_t." << std::endl;
+                }
             }
-
-            // 使用 std::from_chars 转换为 uint64_t
-            auto [ptr, ec] = std::from_chars(data.data(), data.data() + data.size(), result);
-
-            if (ec == std::errc()) {
-                return true; // 转换成功
-            } else if (ec == std::errc::invalid_argument) {
-                log_error << "Error: Invalid argument, not a valid integer." << std::endl;
-            } else if (ec == std::errc::result_out_of_range) {
-                log_error << "Error: Integer out of range for uint64_t." << std::endl;
-            }
-
-            return false; // 转换失败
+            return result;
         }
 
         bool need_transport(std::filesystem::path path) noexcept {
@@ -169,8 +169,64 @@ namespace util::FileTransfer {
             return true;
         }
 
+        void mark_transport_finally(std::filesystem::path path) noexcept {
+            // TODO mark finally, use context_ if needed.
+        }
+
+        std::map<std::string, FileType> ext_to_types = {
+            // FIXME
+            {".json", FileType::TaskJson}, {".txt", FileType::TotalJson}, {".mjpeg", FileType::Video}, {".mjpg", FileType::Video}, {".jpeg", FileType::Jpeg},
+            {".jpg", FileType::Jpeg}, {".ts", FileType::Timestamp}, {".txt", FileType::Pose}};
+
         FileType guess_type(std::filesystem::path path) noexcept {
             FileType result = FileType::TaskJson;
+            if (auto it = ext_to_types.find(path.extension().string()); it != ext_to_types.end()) {
+                result = it->second;
+            }
+            return result;
+        }
+
+        bool send_chunks(int sockfd, std::filesystem::path path, std::uint64_t transfer_id, std::uintmax_t file_size) {
+            bool result = false;
+            std::ifstream file;
+            file.open(path.string(), std::ios::binary);
+            if (file.is_open()) {
+                char buffer[BUFFER_SIZE];
+                std::size_t offset = 0;
+                util::md5 digest;
+                while (!file.eof()) {
+                    auto chunk_length = std::min(BUFFER_SIZE, file_size - offset);
+                    file.read(buffer, chunk_length);
+                    auto read_length = file.gcount();
+                    if (read_length) {
+                        if (read_length == chunk_length) {
+                            digest.update((std::uint8_t*)buffer, (std::uint8_t*)buffer + read_length);
+                            iovec data[2];
+                            auto chunk = ChunkHead{transfer_id, int(offset), int(read_length) /*, buffer*/};
+                            data[0].iov_base = &chunk;
+                            data[0].iov_len = ChunkHead::size();
+                            data[1].iov_base = (void*)buffer;
+                            data[1].iov_len = read_length;
+                            auto r = util::send_data(sockfd, int(FileTransferType::Chunk), data, 2);
+                            if (r == read_length) {
+                                offset += read_length;
+                            } else {
+                                // TODO: send error
+                                break;
+                            }
+                        } else {
+                            // TODO: read error
+                            break;
+                        }
+                    } else {
+                        // TODO: read zero bytes
+                        break;
+                    }
+                }
+                if (offset == file_size) {
+                    result = true;
+                }
+            }
             return result;
         }
 
@@ -178,7 +234,6 @@ namespace util::FileTransfer {
             auto sockfd = c_pool->GetObject(); // get the socket, value wrap by std::optional
             if (sockfd.has_value()) {
                 log_debug << "get connection from pool";
-                // Do something with the socket
                 auto c = std::any_cast<Context>(context_);
                 auto f = FileMetaInfo(guess_type(path), c.big_task_id, c.task_id, camera_sn, file_size, path.filename().string());
                 auto s = f.serialize();
@@ -189,7 +244,10 @@ namespace util::FileTransfer {
                         int r = util::send_packet(sockfd.value(), p);
                         auto r_p = util::receive_packet(sockfd.value(), 10);
                         if (string_view_to_uint64(r_p.data, transfer_id)) {
-                            break;
+                            if (send_chunks(sockfd.value(), path, transfer_id, file_size)) {
+                                mark_transport_finally(path);
+                                break;
+                            }
                         } else {
                             continue;
                         }
@@ -202,40 +260,6 @@ namespace util::FileTransfer {
                         }
                     }
                 }
-                std::ifstream file;
-                file.open(path.string(), std::ios::binary);
-                if (file.is_open()) {
-                    char buffer[BUFFER_SIZE];
-                    std::size_t offset = 0;
-                    util::md5 digest;
-                    while (!file.eof()) {
-                        auto chunk_length = std::min(BUFFER_SIZE, file_size - offset);
-                        file.read(buffer, chunk_length);
-                        auto read_length = file.gcount();
-                        if (read_length) {
-                            if (read_length == chunk_length) {
-                                digest.update((std::uint8_t*)buffer, (std::uint8_t*)buffer + read_length);
-                                iovec data[2];
-                                auto chunk = ChunkHead{transfer_id, int(offset), int(read_length) /*, buffer*/};
-                                data[0].iov_base = &chunk;
-                                data[0].iov_len = ChunkHead::size();
-                                data[1].iov_base = (void*)buffer;
-                                data[1].iov_len = read_length;
-                                auto r = util::send_data(sockfd.value(), int(FileTransferType::Chunk), data, 2);
-                                if (r == read_length) {
-                                    offset += read_length;
-                                } else {
-                                    // TODO: send error
-                                }
-                            } else {
-                                // TODO: read error
-                            }
-                        } else {
-                            // TODO: read zero bytes
-                        }
-                    }
-                }
-                // TODO: update DB
                 c_pool->RecycleObject(sockfd.value()); // release the socket
                 log_debug << "recycled connection to pool";
             }
@@ -245,7 +269,6 @@ namespace util::FileTransfer {
             auto sockfd = c_pool->GetObject(); // get the socket, value wrap by std::optional
             if (sockfd.has_value()) {
                 log_debug << "get connection from pool";
-                // Do something with the socket
                 auto c = std::any_cast<Context>(context_);
                 auto content = std::malloc(file_size);
                 auto file = std::fopen(path.c_str(), "rb");
@@ -260,7 +283,7 @@ namespace util::FileTransfer {
                     try {
                         int r = util::send_packet(sockfd.value(), p);
                         auto r_p = util::receive_packet(sockfd.value(), 10);
-                        // TODO: update DB
+                        mark_transport_finally(path);
                         break;
                     } catch (socket_exception& e) {
                         if (e.error == SocketError::Final) {
