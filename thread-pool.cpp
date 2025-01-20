@@ -44,6 +44,9 @@ namespace util {
                 } catch (...) {}
                 --running_count_;
             }
+            if (std::unique_lock<std::mutex> lock{tasks_mutex_}; tasks_.empty() && running_count_ == 0) {
+                wait_condition_.notify_all();
+            }
         }
     }
 } // namespace util

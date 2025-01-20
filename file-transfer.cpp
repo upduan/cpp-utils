@@ -47,6 +47,15 @@ namespace util::FileTransfer {
             std::string task_id;
         };
 
+        bool need_transport(std::filesystem::path path) noexcept {
+            // TODO check, use context_ if needed.
+            return true;
+        }
+
+        void mark_transport_finally(std::filesystem::path path) noexcept {
+            // TODO mark finally, use context_ if needed.
+        }
+
         struct FileMetaInfo {
             static std::size_t fill_buffer(char* buffer, FileMetaInfo const& that) noexcept {
                 std::size_t offset = 0;
@@ -144,8 +153,6 @@ namespace util::FileTransfer {
             }
         };
 
-        constexpr std::size_t BUFFER_SIZE = 1024 * 100;
-
         bool string_view_to_uint64(std::string_view data, std::uint64_t& result) {
             bool result = false; // 转换失败
             if (data.empty()) {
@@ -164,15 +171,6 @@ namespace util::FileTransfer {
             return result;
         }
 
-        bool need_transport(std::filesystem::path path) noexcept {
-            // TODO check, use context_ if needed.
-            return true;
-        }
-
-        void mark_transport_finally(std::filesystem::path path) noexcept {
-            // TODO mark finally, use context_ if needed.
-        }
-
         std::map<std::string, FileType> ext_to_types = {
             // FIXME
             {".json", FileType::TaskJson}, {".txt", FileType::TotalJson}, {".mjpeg", FileType::Video}, {".mjpg", FileType::Video}, {".jpeg", FileType::Jpeg},
@@ -185,6 +183,8 @@ namespace util::FileTransfer {
             }
             return result;
         }
+
+        constexpr std::size_t BUFFER_SIZE = 1024 * 100;
 
         bool send_chunks(int sockfd, std::filesystem::path path, std::uint64_t transfer_id, std::uintmax_t file_size) {
             bool result = false;
