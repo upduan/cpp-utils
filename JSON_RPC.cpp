@@ -20,7 +20,7 @@ namespace util::JsonRpc {
 
     boost::json::object Message::to() const noexcept {
         boost::json::object result;
-        result["jsonrpc"] = JsonRpc::version_;
+        result["jsonrpc"] = version_;
         if (id) {
             result["id"] = id;
         }
