@@ -13,12 +13,12 @@
 
 namespace util::Log {
     namespace {
-        std::string log_folder = "/var/log/webserver"; // becase first so write
+        // std::string log_folder = "/var/log/webserver"; // becase first so write
         std::atomic<bool> clean_thread_stop_flag = false;
         std::shared_ptr<std::thread> clean_thread;
     } // namespace
 
-    void init(std::string const& filename_prefix, boost::log::trivial::severity_level level) noexcept {
+    void init(std::string const& log_folder, std::string const& filename_prefix, boost::log::trivial::severity_level level) noexcept {
         if (!std::filesystem::exists(log_folder)) {
             std::filesystem::create_directories(log_folder);
         }
